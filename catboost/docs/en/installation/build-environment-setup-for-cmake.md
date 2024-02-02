@@ -14,6 +14,10 @@ For building {{ product }} using Ya Make see [here](../concepts/build-from-sourc
 
 ## Native artifacts build requirements
 
+### [Python interpreter](https://www.python.org/)
+
+  Python 3.x interpreter with [`six` package](https://pypi.org/project/six/) installed is required. Python is used in some auxiliary scripts and [`conan` package manager](#conan) uses it.
+
 ### [CMake](https://cmake.org/)
 
   |Condition|Minimum version|
@@ -49,6 +53,7 @@ For building {{ product }} using Ya Make see [here](../concepts/build-from-sourc
 
       - Windows 10 or Windows 11 SDK (usually installed as a part of the Microsoft Visual Studio setup)
       - MSVC v142 - VS 2019 C++ x64/x86 build tools version v14.28 - 16.8 or v14.28 - 16.9 (can be selected in `Individual components` pane of the Visual Studio Installer for Visual Studio 2019)
+      - For revisions later than [this](https://github.com/catboost/catboost/commit/d5ac776e0dd4eeb2ffd99d3fabaaee3e86b8dba1) if you want to build without CUDA support you will need `clang-cl` compiler for Visual Studio with version 12+ installed. See details [here](https://learn.microsoft.com/en-us/cpp/build/clang-support-msbuild?view=msvc-160).
 
   {% endlist %}
 
@@ -62,9 +67,9 @@ For building {{ product }} using Ya Make see [here](../concepts/build-from-sourc
 
   Other CUDA versions (11.0+) can also be used but require changing target compute architecture options in affected CMake targets.
 
-### [Conan](https://conan.io/)
+### [Conan](https://conan.io/) {#conan}
 
-  Version 1.57.0 - 1.59.0. Version 2.x support is in progress.
+  Version 1.57.0 - 1.62.0. Version 1.62.0 is required if you use python 3.12. Version 2.x support is [in progress](https://github.com/catboost/catboost/issues/2582).
 
   Used for some dependencies.
 

@@ -87,7 +87,8 @@ ctypedef fused numpy_indices_dtype:
     np.uint64_t
 
 
-ctypedef fused numpy_num_dtype:
+ctypedef fused numpy_num_or_bool_dtype:
+    # np.npy_bool   - can't add it - Cython confuses it with np.uint8_t
     np.int8_t
     np.int16_t
     np.int32_t
@@ -100,7 +101,8 @@ ctypedef fused numpy_num_dtype:
     np.float64_t
 
 
-numpy_num_dtype_list = [
+numpy_num_or_bool_dtype_list = [
+    np.bool_,
     np.int8,
     np.int16,
     np.int32,
@@ -273,15 +275,15 @@ cdef class Py_EmbeddingSequencePtr:
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def make_non_owning_type_cast_array_holder(np.ndarray[numpy_num_dtype, ndim=1] array):
+def make_non_owning_type_cast_array_holder(np.ndarray[numpy_num_or_bool_dtype, ndim=1] array):
 
     """
         older buffer interface is used instead of memory views because of
         https://github.com/cython/cython/issues/1772, https://github.com/cython/cython/issues/2485
     """
 
-    cdef const numpy_num_dtype* array_begin = <const numpy_num_dtype*>nullptr
-    cdef const numpy_num_dtype* array_end = <const numpy_num_dtype*>nullptr
+    cdef const numpy_num_or_bool_dtype* array_begin = <const numpy_num_or_bool_dtype*>nullptr
+    cdef const numpy_num_or_bool_dtype* array_end = <const numpy_num_or_bool_dtype*>nullptr
 
     if array.shape[0] != 0:
         array_begin = &array[0]
@@ -290,25 +292,25 @@ def make_non_owning_type_cast_array_holder(np.ndarray[numpy_num_dtype, ndim=1] a
     cdef Py_FloatSequencePtr py_result = Py_FloatSequencePtr()
     cdef ITypedSequencePtr[np.float32_t] result
 
-    if numpy_num_dtype is np.int8_t:
+    if numpy_num_or_bool_dtype is np.int8_t:
         result = MakeNonOwningTypeCastArrayHolder[np.float32_t, np.int8_t](array_begin, array_end)
-    if numpy_num_dtype is np.int16_t:
+    if numpy_num_or_bool_dtype is np.int16_t:
         result = MakeNonOwningTypeCastArrayHolder[np.float32_t, np.int16_t](array_begin, array_end)
-    if numpy_num_dtype is np.int32_t:
+    if numpy_num_or_bool_dtype is np.int32_t:
         result = MakeNonOwningTypeCastArrayHolder[np.float32_t, np.int32_t](array_begin, array_end)
-    if numpy_num_dtype is np.int64_t:
+    if numpy_num_or_bool_dtype is np.int64_t:
         result = MakeNonOwningTypeCastArrayHolder[np.float32_t, np.int64_t](array_begin, array_end)
-    if numpy_num_dtype is np.uint8_t:
+    if numpy_num_or_bool_dtype is np.uint8_t:
         result = MakeNonOwningTypeCastArrayHolder[np.float32_t, np.uint8_t](array_begin, array_end)
-    if numpy_num_dtype is np.uint16_t:
+    if numpy_num_or_bool_dtype is np.uint16_t:
         result = MakeNonOwningTypeCastArrayHolder[np.float32_t, np.uint16_t](array_begin, array_end)
-    if numpy_num_dtype is np.uint32_t:
+    if numpy_num_or_bool_dtype is np.uint32_t:
         result = MakeNonOwningTypeCastArrayHolder[np.float32_t, np.uint32_t](array_begin, array_end)
-    if numpy_num_dtype is np.uint64_t:
+    if numpy_num_or_bool_dtype is np.uint64_t:
         result = MakeNonOwningTypeCastArrayHolder[np.float32_t, np.uint64_t](array_begin, array_end)
-    if numpy_num_dtype is np.float32_t:
+    if numpy_num_or_bool_dtype is np.float32_t:
         result = MakeNonOwningTypeCastArrayHolder[np.float32_t, np.float32_t](array_begin, array_end)
-    if numpy_num_dtype is np.float64_t:
+    if numpy_num_or_bool_dtype is np.float64_t:
         result = MakeNonOwningTypeCastArrayHolder[np.float32_t, np.float64_t](array_begin, array_end)
 
     py_result.set_result(result)
@@ -321,11 +323,11 @@ def make_non_owning_type_cast_array_holder(np.ndarray[numpy_num_dtype, ndim=1] a
 @cython.wraparound(False)
 def make_embedding_type_cast_array_holder(
     size_t flat_feature_idx,
-    np.ndarray[numpy_num_dtype, ndim=1] first_element,
+    np.ndarray[numpy_num_or_bool_dtype, ndim=1] first_element,
     np.ndarray elements): #
 
-    cdef np.ndarray[numpy_num_dtype, ndim=1] element
-    cdef TVector[TMaybeOwningConstArrayHolder[numpy_num_dtype]] data
+    cdef np.ndarray[numpy_num_or_bool_dtype, ndim=1] element
+    cdef TVector[TMaybeOwningConstArrayHolder[numpy_num_or_bool_dtype]] data
     cdef size_t embedding_dimension = len(first_element)
     cdef size_t object_count = len(elements)
     cdef size_t object_idx
@@ -352,9 +354,9 @@ def make_embedding_type_cast_array_holder(
             data_holders.append(element)
 
         data.push_back(
-            TMaybeOwningConstArrayHolder[numpy_num_dtype].CreateNonOwning(
-                TConstArrayRef[numpy_num_dtype](
-                    <numpy_num_dtype*>&element[0],
+            TMaybeOwningConstArrayHolder[numpy_num_or_bool_dtype].CreateNonOwning(
+                TConstArrayRef[numpy_num_or_bool_dtype](
+                    <numpy_num_or_bool_dtype*>&element[0],
                     embedding_dimension
                 )
             )
@@ -365,25 +367,25 @@ def make_embedding_type_cast_array_holder(
 
     cdef ITypedSequencePtr[TMaybeOwningConstArrayHolder[np.float32_t]] result
 
-    if numpy_num_dtype is np.int8_t:
+    if numpy_num_or_bool_dtype is np.int8_t:
         result = MakeTypeCastArraysHolderFromVector[np.float32_t, np.int8_t](data)
-    if numpy_num_dtype is np.int16_t:
+    if numpy_num_or_bool_dtype is np.int16_t:
         result = MakeTypeCastArraysHolderFromVector[np.float32_t, np.int16_t](data)
-    if numpy_num_dtype is np.int32_t:
+    if numpy_num_or_bool_dtype is np.int32_t:
         result = MakeTypeCastArraysHolderFromVector[np.float32_t, np.int32_t](data)
-    if numpy_num_dtype is np.int64_t:
+    if numpy_num_or_bool_dtype is np.int64_t:
         result = MakeTypeCastArraysHolderFromVector[np.float32_t, np.int64_t](data)
-    if numpy_num_dtype is np.uint8_t:
+    if numpy_num_or_bool_dtype is np.uint8_t:
         result = MakeTypeCastArraysHolderFromVector[np.float32_t, np.uint8_t](data)
-    if numpy_num_dtype is np.uint16_t:
+    if numpy_num_or_bool_dtype is np.uint16_t:
         result = MakeTypeCastArraysHolderFromVector[np.float32_t, np.uint16_t](data)
-    if numpy_num_dtype is np.uint32_t:
+    if numpy_num_or_bool_dtype is np.uint32_t:
         result = MakeTypeCastArraysHolderFromVector[np.float32_t, np.uint32_t](data)
-    if numpy_num_dtype is np.uint64_t:
+    if numpy_num_or_bool_dtype is np.uint64_t:
         result = MakeTypeCastArraysHolderFromVector[np.float32_t, np.uint64_t](data)
-    if numpy_num_dtype is np.float32_t:
+    if numpy_num_or_bool_dtype is np.float32_t:
         result = MakeTypeCastArraysHolderFromVector[np.float32_t, np.float32_t](data)
-    if numpy_num_dtype is np.float64_t:
+    if numpy_num_or_bool_dtype is np.float64_t:
         result = MakeTypeCastArraysHolderFromVector[np.float32_t, np.float64_t](data)
 
     cdef Py_EmbeddingSequencePtr py_result = Py_EmbeddingSequencePtr()
@@ -1095,12 +1097,7 @@ cdef extern from "catboost/private/libs/hyperparameter_tuning/hyperparameter_tun
 
     cdef cppclass TBestOptionValuesWithCvResult:
         TVector[TCVResult] CvResult
-        THashMap[TString, bool_t] BoolOptions
-        THashMap[TString, int] IntOptions
-        THashMap[TString, ui32] UIntOptions
-        THashMap[TString, double] DoubleOptions
-        THashMap[TString, TString] StringOptions
-        THashMap[TString, TVector[double]] ListOfDoublesOptions
+        TJsonValue BestParams
 
     cdef void GridSearch(
         const TJsonValue& grid,
@@ -2148,7 +2145,7 @@ cdef _get_object_count(data):
 @cython.boundscheck(False)
 @cython.wraparound(False)
 def _set_features_order_data_features_data(
-    np.ndarray[numpy_num_dtype, ndim=2] num_feature_values,
+    np.ndarray[numpy_num_or_bool_dtype, ndim=2] num_feature_values,
     np.ndarray[object, ndim=2] cat_feature_values,
     Py_FeaturesOrderBuilderVisitor py_builder_visitor
 ):
@@ -2203,7 +2200,7 @@ def _set_features_order_data_features_data(
 @cython.boundscheck(False)
 @cython.wraparound(False)
 def _set_features_order_data_ndarray(
-    np.ndarray[numpy_num_dtype, ndim=2] feature_values,
+    np.ndarray[numpy_num_or_bool_dtype, ndim=2] feature_values,
     ui32 [:] src_feature_idx_to_dst_feature_idx,
     bool_t [:] is_cat_feature_mask,
     bool_t [:] is_text_feature_mask,
@@ -2358,7 +2355,7 @@ cdef create_num_factor_data(
             <const np.float32_t*>nullptr
         )
         return []
-    elif column_values.dtype in numpy_num_dtype_list: # Cython cannot use fused type lists in normal code
+    elif column_values.dtype in numpy_num_or_bool_dtype_list: # Cython cannot use fused type lists in normal code
         if not column_values.flags.c_contiguous:
             column_values = np.ascontiguousarray(column_values, dtype=np.float32)
         py_num_factor_data = make_non_owning_type_cast_array_holder(column_values)
@@ -2525,7 +2522,7 @@ cdef create_embedding_factor_data(
             <const TEmbeddingData*>nullptr
         )
         return []
-    elif isinstance(column_values[0], np.ndarray) and (column_values[0].dtype in numpy_num_dtype_list):
+    elif isinstance(column_values[0], np.ndarray) and (column_values[0].dtype in numpy_num_or_bool_dtype_list):
         py_embedding_factor_data, data_holders = make_embedding_type_cast_array_holder(
             flat_feature_idx,
             column_values[0],
@@ -3007,7 +3004,7 @@ cdef _set_data_from_scipy_coo_sparse(
 
 @cython.boundscheck(False)
 def _set_data_from_scipy_csr_sparse(
-    numpy_num_dtype[:] data,
+    numpy_num_or_bool_dtype[:] data,
     numpy_indices_dtype[:] indices,
     numpy_indices_dtype[:] indptr,
     bool_t has_separate_embedding_features_data,
@@ -3040,9 +3037,9 @@ def _set_data_from_scipy_csr_sparse(
     cdef TConstArrayRef[ui32] indptr_i32_ref = TConstArrayRef[ui32](<ui32*>&indptr_i32[0], len(indptr_i32))
     cdef TConstArrayRef[ui32] indices_i32_ref = TConstArrayRef[ui32](<ui32*>&indices_i32[0], len(indices_i32))
 
-    cdef np.ndarray[numpy_num_dtype, ndim=1] data_np
+    cdef np.ndarray[numpy_num_or_bool_dtype, ndim=1] data_np
 
-    if numpy_num_dtype == np.float32_t:
+    if numpy_num_or_bool_dtype == np.float32_t:
         data_np = cast_to_nparray(data, np.float32)
         return SetDataFromScipyCsrSparse[np.float32_t](
             indptr_i32_ref,
@@ -3054,7 +3051,7 @@ def _set_data_from_scipy_csr_sparse(
             builder_visitor,
             <ILocalExecutor*>py_builder_visitor.local_executor.Get())
 
-    elif numpy_num_dtype == np.float64_t:
+    elif numpy_num_or_bool_dtype == np.float64_t:
         data_np = cast_to_nparray(data, np.float64)
         return SetDataFromScipyCsrSparse[np.float64_t](
             indptr_i32_ref,
@@ -3066,7 +3063,7 @@ def _set_data_from_scipy_csr_sparse(
             builder_visitor,
             <ILocalExecutor*>py_builder_visitor.local_executor.Get())
 
-    elif numpy_num_dtype == np.int8_t:
+    elif numpy_num_or_bool_dtype == np.int8_t:
         data_np = cast_to_nparray(data, np.int8)
         return SetDataFromScipyCsrSparse[np.int8_t](
             indptr_i32_ref,
@@ -3078,7 +3075,7 @@ def _set_data_from_scipy_csr_sparse(
             builder_visitor,
             <ILocalExecutor*>py_builder_visitor.local_executor.Get())
 
-    elif numpy_num_dtype == np.uint8_t:
+    elif numpy_num_or_bool_dtype == np.uint8_t:
         data_np = cast_to_nparray(data, np.uint8)
         return SetDataFromScipyCsrSparse[np.uint8_t](
             indptr_i32_ref,
@@ -3090,7 +3087,7 @@ def _set_data_from_scipy_csr_sparse(
             builder_visitor,
             <ILocalExecutor*>py_builder_visitor.local_executor.Get())
 
-    elif numpy_num_dtype == np.int16_t:
+    elif numpy_num_or_bool_dtype == np.int16_t:
         data_np = cast_to_nparray(data, np.int16)
         return SetDataFromScipyCsrSparse[np.int16_t](
             indptr_i32_ref,
@@ -3102,7 +3099,7 @@ def _set_data_from_scipy_csr_sparse(
             builder_visitor,
             <ILocalExecutor*>py_builder_visitor.local_executor.Get())
 
-    elif numpy_num_dtype == np.uint16_t:
+    elif numpy_num_or_bool_dtype == np.uint16_t:
         data_np = cast_to_nparray(data, np.uint16)
         return SetDataFromScipyCsrSparse[np.uint16_t](
             indptr_i32_ref,
@@ -3114,7 +3111,7 @@ def _set_data_from_scipy_csr_sparse(
             builder_visitor,
             <ILocalExecutor*>py_builder_visitor.local_executor.Get())
 
-    elif numpy_num_dtype == np.int32_t:
+    elif numpy_num_or_bool_dtype == np.int32_t:
         data_np = cast_to_nparray(data, np.int32)
         return SetDataFromScipyCsrSparse[np.int32_t](
             indptr_i32_ref,
@@ -3126,7 +3123,7 @@ def _set_data_from_scipy_csr_sparse(
             builder_visitor,
             <ILocalExecutor*>py_builder_visitor.local_executor.Get())
 
-    elif numpy_num_dtype == np.uint32_t:
+    elif numpy_num_or_bool_dtype == np.uint32_t:
         data_np = cast_to_nparray(data, np.uint32)
         return SetDataFromScipyCsrSparse[np.uint32_t](
             indptr_i32_ref,
@@ -3138,7 +3135,7 @@ def _set_data_from_scipy_csr_sparse(
             builder_visitor,
             <ILocalExecutor*>py_builder_visitor.local_executor.Get())
 
-    elif numpy_num_dtype == np.int64_t:
+    elif numpy_num_or_bool_dtype == np.int64_t:
         data_np = cast_to_nparray(data, np.int64)
         return SetDataFromScipyCsrSparse[np.int64_t](
             indptr_i32_ref,
@@ -3150,7 +3147,7 @@ def _set_data_from_scipy_csr_sparse(
             builder_visitor,
             <ILocalExecutor*>py_builder_visitor.local_executor.Get())
 
-    elif numpy_num_dtype == np.uint64_t:
+    elif numpy_num_or_bool_dtype == np.uint64_t:
         data_np = cast_to_nparray(data, np.uint64)
         return SetDataFromScipyCsrSparse[np.uint64_t](
             indptr_i32_ref,
@@ -3267,7 +3264,7 @@ cdef _set_objects_order_data_scipy_sparse_matrix(
 # returns new data holders array
 def _set_features_order_data_scipy_sparse_csc_matrix(
     ui32 doc_count,
-    numpy_num_dtype [:] data,
+    numpy_num_or_bool_dtype [:] data,
     numpy_indices_dtype [:] indices,
     numpy_indices_dtype [:] indptr,
     bool_t has_sorted_indices,
@@ -3305,7 +3302,7 @@ def _set_features_order_data_scipy_sparse_csc_matrix(
     cdef int indptr_begin
     cdef int indptr_end
 
-    if (numpy_num_dtype is np.float32_t) or (numpy_num_dtype is np.float64_t):
+    if (numpy_num_or_bool_dtype is np.float32_t) or (numpy_num_or_bool_dtype is np.float64_t):
         is_float_value = True
 
     new_data_holders = []
@@ -3626,7 +3623,7 @@ cdef _set_timestamp(timestamp, IBuilderVisitor* builder_visitor):
 @cython.boundscheck(False)
 @cython.wraparound(False)
 def _set_label_from_num_nparray_objects_order(
-    np.ndarray[numpy_num_dtype, ndim=2] label,
+    np.ndarray[numpy_num_or_bool_dtype, ndim=2] label,
     Py_ObjectsOrderBuilderVisitor py_builder_visitor
 ):
 
@@ -3646,7 +3643,9 @@ def _set_label_from_num_nparray_objects_order(
             builder_visitor[0].AddTarget(target_idx, object_idx, <float>label[object_idx][target_idx])
 
 cdef ERawTargetType _py_target_type_to_raw_target_data(py_label_type) except *:
-    if np.issubdtype(py_label_type, np.floating):
+    if py_label_type in (bool, np.bool_):
+        return ERawTargetType_Boolean
+    elif np.issubdtype(py_label_type, np.floating):
         return ERawTargetType_Float
     elif np.issubdtype(py_label_type, np.integer):
         return ERawTargetType_Integer
@@ -3689,8 +3688,8 @@ cdef class _PoolBase:
 
         self.target_type = type(label[0][0])
         raw_target_type = _py_target_type_to_raw_target_data(self.target_type)
-        if (raw_target_type == ERawTargetType_Integer) or (raw_target_type == ERawTargetType_Float):
-            if isinstance(label, np.ndarray) and (self.target_type in numpy_num_dtype_list):
+        if raw_target_type in (ERawTargetType_Boolean, ERawTargetType_Integer, ERawTargetType_Float):
+            if isinstance(label, np.ndarray) and (self.target_type in numpy_num_or_bool_dtype_list):
                 _set_label_from_num_nparray_objects_order(label, py_builder_visitor)
             else:
                 for target_idx in range(target_count):
@@ -3721,10 +3720,10 @@ cdef class _PoolBase:
 
         self.target_type = type(label[0][0])
         raw_target_type = _py_target_type_to_raw_target_data(self.target_type)
-        if (raw_target_type == ERawTargetType_Integer) or (raw_target_type == ERawTargetType_Float):
+        if raw_target_type in (ERawTargetType_Boolean, ERawTargetType_Integer, ERawTargetType_Float):
             self.__target_data_holders = []
             for target_idx in range(target_count):
-                if isinstance(label, np.ndarray) and (self.target_type in numpy_num_dtype_list):
+                if isinstance(label, np.ndarray) and (self.target_type in numpy_num_or_bool_dtype_list):
                     target_array = np.ascontiguousarray(label[:, target_idx])
                 else:
                     target_array = np.empty(object_count, dtype=np.float32)
@@ -4040,7 +4039,7 @@ cdef class _PoolBase:
         elif isinstance(data, scipy.sparse.csc_matrix):
             do_use_raw_data_in_features_order = True
         else:
-            if isinstance(data, np.ndarray) and (data.dtype in numpy_num_dtype_list):
+            if isinstance(data, np.ndarray) and (data.dtype in numpy_num_or_bool_dtype_list):
                 if data.flags.aligned and data.flags.f_contiguous and (len(data) != 0):
                     do_use_raw_data_in_features_order = True
 
@@ -4333,7 +4332,7 @@ cdef class _PoolBase:
                 return np.array(self.__target_data_holders).T
         else:
             raw_target_type = self.__pool.Get()[0].RawTargetData.GetTargetType()
-            if (raw_target_type == ERawTargetType_Integer) or (raw_target_type == ERawTargetType_Float):
+            if raw_target_type in (ERawTargetType_Boolean, ERawTargetType_Integer, ERawTargetType_Float):
                 num_target_references.resize(target_count)
                 if target_count == 1:
                     num_target_1d = np.empty(object_count, dtype=np.float32)
@@ -4607,7 +4606,9 @@ cdef _get_model_class_labels(const TFullModel& model):
     cdef EJsonValueType labelType = jsonLabels[0].GetType()
     cdef size_t classIdx
 
-    if labelType == JSON_INTEGER:
+    if labelType == JSON_BOOLEAN:
+        labels = np.array([False, True])
+    elif labelType == JSON_INTEGER:
         labels = np.empty(classCount, np.int64)
         for classIdx in range(classCount):
             labels[classIdx] = jsonLabels[classIdx].GetInteger()
@@ -5259,19 +5260,7 @@ cdef class _CatBoost:
             )
             result_metrics.add(name)
 
-        best_params = {}
-        for key, value in results.BoolOptions:
-            best_params[to_native_str(key)] = value
-        for key, value in results.IntOptions:
-            best_params[to_native_str(key)] = value
-        for key, value in results.UIntOptions:
-            best_params[to_native_str(key)] = value
-        for key, value in results.DoubleOptions:
-            best_params[to_native_str(key)] = value
-        for key, value in results.StringOptions:
-            best_params[to_native_str(key)] = to_native_str(value)
-        for key, value in results.ListOfDoublesOptions:
-            best_params[to_native_str(key)] = [float(elem) for elem in value]
+        best_params = loads(to_native_str(WriteTJsonValue(results.BestParams)))
         search_result = {}
         search_result["params"] = best_params
         if return_cv_results:
@@ -6217,22 +6206,25 @@ cpdef get_num_feature_values_sample(
 
 
 cpdef _check_train_params(dict params):
-    params_to_check = params.copy()
-    if 'cat_features' in params_to_check:
-        del params_to_check['cat_features']
-    if 'input_borders' in params_to_check:
-        del params_to_check['input_borders']
-    if 'ignored_features' in params_to_check:
-        del params_to_check['ignored_features']
-    if 'monotone_constraints' in params_to_check:
-        del params_to_check['monotone_constraints']
-    if 'feature_weights' in params_to_check:
-        del params_to_check['feature_weights']
-    if 'first_feature_use_penalties' in params_to_check:
-        del params_to_check['first_feature_use_penalties']
-    if 'per_object_feature_penalties' in params_to_check:
-        del params_to_check['per_object_feature_penalties']
+    skip_params = [
+        'cat_features',
+        'text_features',
+        'embedding_features',
+        'input_borders',
+        'ignored_features',
+        'monotone_constraints',
+        'feature_weights',
+        'first_feature_use_penalties',
+        'per_object_feature_penalties',
+        'per_float_feature_quantization',
+        'per_feature_ctr',
+        'fixed_binary_splits'
+    ]
 
+    params_to_check = {}
+    for key, value in iteritems(params):
+        if key not in skip_params:
+            params_to_check[key] = value
 
     prep_params = _PreprocessParams(params_to_check)
     CheckFitParams(

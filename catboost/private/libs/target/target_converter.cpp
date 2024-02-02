@@ -5,6 +5,8 @@
 #include <catboost/libs/data/loader.h> // for IsMissingValue
 #include <catboost/libs/helpers/exception.h>
 
+#include <catboost/private/libs/labels/helpers.h>
+
 #include <library/cpp/threading/local_executor/local_executor.h>
 
 #include <util/generic/algorithm.h>
@@ -20,6 +22,7 @@
 #include <util/system/compiler.h>
 #include <util/system/yassert.h>
 
+#include <atomic>
 #include <cmath>
 
 
@@ -129,7 +132,9 @@ namespace NCB {
             const TRawTarget& rawTarget,
             NPar::ILocalExecutor* localExecutor
         ) override {
-            Y_UNUSED(targetType);
+            if (targetType == ERawTargetType::Boolean) {
+                CB_ENSURE(ClassCount == 2, "target is boolean but the specified class count is " << ClassCount);
+            }
 
             TVector<float> result = ConvertRawToFloatTarget(rawTarget, localExecutor);
 
@@ -182,6 +187,12 @@ namespace NCB {
             float classIdx = 0;
 
             switch (inputClassLabels[0].GetType()) {
+                case NJson::JSON_BOOLEAN:
+                    ClassLabelType = ERawTargetType::Boolean;
+                    CheckBooleanClassLabels(inputClassLabels);
+                    FloatLabelToClass.emplace(0.0f, 0.0f);
+                    FloatLabelToClass.emplace(1.0f, 1.0f);
+                    break;
                 case NJson::JSON_INTEGER:
                     ClassLabelType = ERawTargetType::Integer;
                     for (const NJson::TJsonValue& classLabel : inputClassLabels) {
@@ -273,15 +284,27 @@ namespace NCB {
 
         void UpdateStringLabelToClass() {
             if (StringLabelToClass.empty()) {
-                if (ClassLabelType == ERawTargetType::Integer) {
-                    for (const auto& [floatLabel, classIdx] : FloatLabelToClass) {
-                        StringLabelToClass.emplace(ToString(static_cast<i64>(floatLabel)), classIdx);
-                    }
-                } else {
-                    CB_ENSURE(ClassLabelType == ERawTargetType::Float, "Unexpected class label type");
-                    for (const auto& [floatLabel, classIdx] : FloatLabelToClass) {
-                        StringLabelToClass.emplace(ToString(floatLabel), classIdx);
-                    }
+                switch (ClassLabelType) {
+                    case ERawTargetType::Boolean:
+                        StringLabelToClass.emplace("false", 0.0);
+                        StringLabelToClass.emplace("False", 0.0);
+                        StringLabelToClass.emplace("0", 0.0);
+                        StringLabelToClass.emplace("true", 1.0);
+                        StringLabelToClass.emplace("True", 1.0);
+                        StringLabelToClass.emplace("1", 1.0);
+                        break;
+                    case ERawTargetType::Integer:
+                        for (const auto& [floatLabel, classIdx] : FloatLabelToClass) {
+                            StringLabelToClass.emplace(ToString(static_cast<i64>(floatLabel)), classIdx);
+                        }
+                        break;
+                    case ERawTargetType::Float:
+                        for (const auto& [floatLabel, classIdx] : FloatLabelToClass) {
+                            StringLabelToClass.emplace(ToString(floatLabel), classIdx);
+                        }
+                        break;
+                    default:
+                        CB_ENSURE(false, "Unexpected class label type");
                 }
             }
         }
@@ -297,8 +320,10 @@ namespace NCB {
 
     class TMakeClassLabelsTargetConverter : public ITargetConverter {
     public:
-        TMakeClassLabelsTargetConverter()
-            : TargetType(ERawTargetType::None) // just some default
+        TMakeClassLabelsTargetConverter(bool isMultiClass, bool allowConstLabel)
+            : IsMultiClass(isMultiClass)
+            , AllowConstLabel(allowConstLabel)
+            , TargetType(ERawTargetType::None) // just some default
         {}
 
         TVector<float> Process(
@@ -323,6 +348,8 @@ namespace NCB {
         ui32 GetClassCount() const override {
             ui32 classCount;
             switch (TargetType) {
+                case ERawTargetType::Boolean:
+                    return 2;
                 case ERawTargetType::Integer:
                 case ERawTargetType::Float:
                     classCount = SafeIntegerCast<ui32>(FloatLabelToClass.size());
@@ -333,7 +360,7 @@ namespace NCB {
                 default:
                     CB_ENSURE(false, "Uexpected target type");
             }
-            Y_ASSERT(classCount > 1);
+            Y_ASSERT(AllowConstLabel || (classCount > 1));
             return classCount;
         }
 
@@ -341,6 +368,9 @@ namespace NCB {
             TVector<NJson::TJsonValue> result;
 
             switch (TargetType) {
+                case ERawTargetType::Boolean:
+                    result = {NJson::TJsonValue(false), NJson::TJsonValue(true)};
+                    break;
                 case ERawTargetType::Integer:
                     result.yresize(FloatLabelToClass.ysize());
                     for (const auto& [floatLabel, classIdx] : FloatLabelToClass) {
@@ -370,50 +400,100 @@ namespace NCB {
         }
 
     private:
+        void CheckUniqueLabelsSize(size_t size) const {
+            CB_ENSURE(AllowConstLabel || (size > 1), "Target contains only one unique value");
+            CB_ENSURE(
+                IsMultiClass || (size <= 2),
+                "Target with classes must contain "
+                << (AllowConstLabel ? "no more than" : "only")
+                << " 2 unique values for binary classification"
+            );
+        }
+
         TVector<float> ProcessMakeClassLabelsImpl(const ITypedSequencePtr<float>& labels,
                                                   NPar::ILocalExecutor* localExecutor) {
             CB_ENSURE_INTERNAL(
-                (TargetType == ERawTargetType::Float) || (TargetType == ERawTargetType::Integer),
+                TargetType != ERawTargetType::String,
                 "TargetType is " << TargetType << ", but labels is ITypedSequencePtr<float>"
             );
 
             TVector<float> targets = ToVector(*labels);
 
-            THashSet<float> uniqueLabelsSet;
-            for (float value : targets) {
-                CB_ENSURE(!std::isnan(value), "NaN values are not supported for target");
-                uniqueLabelsSet.insert(value);
-            }
+            if (TargetType == ERawTargetType::Boolean) {
+                TConstArrayRef<float> targetsRef = targets;
 
-            TVector<float> uniqueLabels(uniqueLabelsSet.begin(), uniqueLabelsSet.end());
-            Sort(uniqueLabels);
-
-            CB_ENSURE(FloatLabelToClass.empty(), "ProcessMakeClassLabels: label-to-class map must be empty before label converting.");
-            float classIdx = 0;
-            if (TargetType == ERawTargetType::Integer) {
-                for (auto label: uniqueLabels) {
-                    float integralPart;
-                    CB_ENSURE_INTERNAL(
-                        std::modf(label, &integralPart) == 0.0f,
-                        "TargetType is specified as Integer but labels contain non-integer data"
+                if (AllowConstLabel) {
+                    NPar::ParallelFor(
+                        *localExecutor,
+                        0,
+                        SafeIntegerCast<ui32>(targets.size()),
+                        [targetsRef] (int i) {
+                            auto value = targetsRef[i];
+                            CB_ENSURE(!std::isnan(value), "NaN values are not supported for target");
+                            CB_ENSURE_INTERNAL(
+                                (value == 0.0f) || (value == 1.0f),
+                                "TargetType is specified as Boolean but labels contain non-{0,1} data"
+                            );
+                        }
                     );
-                    FloatLabelToClass.emplace(label, classIdx++);
+                } else {
+                    bool hasValues[2] = {false, false};
+
+                    for (float value : targets) {
+                        CB_ENSURE(!std::isnan(value), "NaN values are not supported for target");
+
+                        if (value == 0.0f) {
+                            hasValues[0] = true;
+                        } else if (value == 1.0f) {
+                            hasValues[1] = true;
+                        } else {
+                            CB_ENSURE_INTERNAL(
+                                false,
+                                "TargetType is specified as Boolean but labels contain non-{0,1} data"
+                            );
+                        }
+                    }
+                    CB_ENSURE(hasValues[0] && hasValues[1], "Target contains only one unique value");
                 }
             } else {
-                for (auto label: uniqueLabels) {
-                    FloatLabelToClass.emplace(label, classIdx++);
+                THashSet<float> uniqueLabelsSet;
+                for (float value : targets) {
+                    CB_ENSURE(!std::isnan(value), "NaN values are not supported for target");
+                    uniqueLabelsSet.insert(value);
                 }
-            }
 
-            TArrayRef<float> targetsRef = targets;
-            NPar::ParallelFor(
-                *localExecutor,
-                0,
-                SafeIntegerCast<ui32>(targets.size()),
-                [targetsRef, this] (int i) {
-                    targetsRef[i] = FloatLabelToClass[targetsRef[i]];
+                CheckUniqueLabelsSize(uniqueLabelsSet.size());
+
+                TVector<float> uniqueLabels(uniqueLabelsSet.begin(), uniqueLabelsSet.end());
+                Sort(uniqueLabels);
+
+                CB_ENSURE(FloatLabelToClass.empty(), "ProcessMakeClassLabels: label-to-class map must be empty before label converting.");
+                float classIdx = 0;
+                if (TargetType == ERawTargetType::Integer) {
+                    for (auto label: uniqueLabels) {
+                        float integralPart;
+                        CB_ENSURE_INTERNAL(
+                            std::modf(label, &integralPart) == 0.0f,
+                            "TargetType is specified as Integer but labels contain non-integer data"
+                        );
+                        FloatLabelToClass.emplace(label, classIdx++);
+                    }
+                } else {
+                    for (auto label: uniqueLabels) {
+                        FloatLabelToClass.emplace(label, classIdx++);
+                    }
                 }
-            );
+
+                TArrayRef<float> targetsRef = targets;
+                NPar::ParallelFor(
+                    *localExecutor,
+                    0,
+                    SafeIntegerCast<ui32>(targets.size()),
+                    [targetsRef, this] (int i) {
+                        targetsRef[i] = FloatLabelToClass[targetsRef[i]];
+                    }
+                );
+            }
             return targets;
         }
 
@@ -425,6 +505,7 @@ namespace NCB {
             );
 
             THashSet<TString> uniqueLabelsSet(labels.begin(), labels.end());
+            CheckUniqueLabelsSize(uniqueLabelsSet.size());
 
             TVector<TString> uniqueLabels(uniqueLabelsSet.begin(), uniqueLabelsSet.end());
             // Kind of heuristic for proper ordering class names if they all are numeric
@@ -458,6 +539,9 @@ namespace NCB {
         }
 
     private:
+        bool IsMultiClass;
+        bool AllowConstLabel;
+
         ERawTargetType TargetType;
 
         // which map is used depends on source target data type
@@ -556,7 +640,8 @@ namespace NCB {
                                                   TMaybe<float> targetBorder,
                                                   size_t targetDim,
                                                   TMaybe<ui32> classCount,
-                                                  const TVector<NJson::TJsonValue>& inputClassLabels) {
+                                                  const TVector<NJson::TJsonValue>& inputClassLabels,
+                                                  bool allowConstLabel) {
 
         CB_ENSURE_INTERNAL(!isMultiClass || isClass, "isMultiClass is true, but isClass is false");
         CB_ENSURE_INTERNAL(!isMultiLabel || isMultiClass, "isMultiLabel is true, but isMultiClass is false");
@@ -624,7 +709,7 @@ namespace NCB {
         }
 
 
-        return MakeHolder<TMakeClassLabelsTargetConverter>();
+        return MakeHolder<TMakeClassLabelsTargetConverter>(isMultiClass, allowConstLabel);
     }
 
 } // NCB
