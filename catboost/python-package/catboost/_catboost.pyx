@@ -1,6 +1,6 @@
 # distutils: language = c++
 # coding: utf-8
-# cython: wraparound=False
+# cython: wraparound=False, boundscheck=False, initializedcheck=False
 
 from catboost.base_defs cimport *
 from catboost.libs.model.cython cimport *
@@ -282,8 +282,6 @@ cdef class Py_EmbeddingSequencePtr:
         pass
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
 def make_non_owning_type_cast_array_holder(np.ndarray[numpy_num_or_bool_dtype, ndim=1] array):
 
     """
@@ -328,8 +326,6 @@ def make_non_owning_type_cast_array_holder(np.ndarray[numpy_num_or_bool_dtype, n
 
 
 # returns (Py_EmbeddingSequencePtr, new data holders array)
-@cython.boundscheck(False)
-@cython.wraparound(False)
 def make_embedding_type_cast_array_holder(
     size_t flat_feature_idx,
     np.ndarray[numpy_num_or_bool_dtype, ndim=1] first_element,
@@ -1677,7 +1673,7 @@ cdef EPredictionType string_to_prediction_type(prediction_type_str) except *:
     return prediction_type
 
 cdef transform_predictions(const TVector[TVector[double]]& predictions, EPredictionType predictionType, int thread_count, TFullModel* model):
-    approx_dimension = model.GetDimensionsCount()
+    cdef size_t approx_dimension = model.GetDimensionsCount()
 
     if approx_dimension == 1:
         if predictionType == EPredictionType_Class:
@@ -1812,7 +1808,7 @@ cdef class _PreprocessGrids:
                     self.custom_rnd_dist_gens[to_arcadia_string(rnd_name)] = _BuildCustomRandomDistributionGenerator(values)
                     self.rdg_enumeration += 1
                 else:
-                    raise CatBoostError("Error: not iterable and not random distribytion generator object at grid")
+                    raise CatBoostError("Error: not iterable and not random distribution generator object at grid")
 
         return params_to_json
 
@@ -2162,8 +2158,6 @@ cdef _get_object_count(data):
     else:
         return np.shape(data)[0]
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
 def _set_features_order_data_features_data(
     np.ndarray[numpy_num_or_bool_dtype, ndim=2] num_feature_values,
     np.ndarray[object, ndim=2] cat_feature_values,
@@ -2217,8 +2211,6 @@ def _set_features_order_data_features_data(
         builder_visitor[0].AddCatFeature(dst_feature_idx, <TConstArrayRef[TString]>cat_factor_data)
         dst_feature_idx += 1
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
 def _set_features_order_data_ndarray(
     np.ndarray[numpy_num_or_bool_dtype, ndim=2] feature_values,
     ui32 [:] src_feature_idx_to_dst_feature_idx,
@@ -2369,10 +2361,12 @@ cdef create_num_factor_data(
     cdef TIntrusivePtr[IResourceHolder] num_factor_data_holder
 
     cdef Py_FloatSequencePtr py_num_factor_data
+    cdef TArrayRef[float] data_buffer
 
+    cdef ui32 doc_count = len(column_values)
     cdef ui32 doc_idx
 
-    if len(column_values) == 0:
+    if doc_count == 0:
         result[0] = MakeNonOwningTypeCastArrayHolder[np.float32_t, np.float32_t](
             <const np.float32_t*>nullptr,
             <const np.float32_t*>nullptr
@@ -2386,9 +2380,10 @@ cdef create_num_factor_data(
         return [column_values]
     else:
         num_factor_data = new TVectorHolder[float]()
-        num_factor_data.Get()[0].Data.resize(len(column_values))
-        for doc_idx in xrange(len(column_values)):
-            num_factor_data.Get()[0].Data[doc_idx] = get_float_feature(
+        num_factor_data.Get()[0].Data.resize(doc_count)
+        data_buffer = TArrayRef[float](num_factor_data.Get()[0].Data.data(), doc_count)
+        for doc_idx in xrange(doc_count):
+            data_buffer[doc_idx] = get_float_feature(
                 doc_idx,
                 flat_feature_idx,
                 column_values[doc_idx]
@@ -2856,9 +2851,6 @@ cdef object _set_features_order_data_pd_data_frame(
     return new_data_holders
 
 
-@cython.boundscheck(False)
-@cython.initializedcheck(False)
-@cython.wraparound(False)
 cdef _set_data_np(
     const float [:,:] num_feature_values,
     object [:,:] cat_feature_values, # cannot be const due to https://github.com/cython/cython/issues/2485
@@ -3056,7 +3048,6 @@ cdef _set_data_from_scipy_coo_sparse(
         )
 
 
-@cython.boundscheck(False)
 def _set_data_from_scipy_csr_sparse(
     numpy_num_or_bool_dtype[:] data,
     numpy_indices_dtype[:] indices,
@@ -3674,8 +3665,6 @@ cdef _set_timestamp(timestamp, IBuilderVisitor* builder_visitor):
         builder_visitor[0].AddTimestamp(i, <ui64>timestamp[i])
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
 def _set_label_from_num_nparray_objects_order(
     np.ndarray[numpy_num_or_bool_dtype, ndim=2] label,
     Py_ObjectsOrderBuilderVisitor py_builder_visitor
@@ -5656,15 +5645,16 @@ cpdef _cv(dict params, _PoolBase pool, int fold_count, bool_t inverted, int part
     return results_output
 
 
-cdef _convert_to_visible_labels(EPredictionType predictionType, TVector[TVector[double]] raws, int thread_count, TFullModel* model):
+cdef _convert_to_visible_labels(EPredictionType predictionType, const TVector[TVector[double]]& raws, int thread_count, TFullModel* model):
     cdef size_t objectCount
     cdef size_t objectIdx
     cdef size_t dim
     cdef size_t dimIdx
+    cdef TString loss_function
     cdef TConstArrayRef[double] raws1d
 
-    if predictionType == string_to_prediction_type('Class'):
-        loss_function = _get_loss_function_name(model[0])
+    if predictionType == EPredictionType_Class:
+        loss_function = model.GetLossFunctionName()
         if loss_function in ('MultiLogloss', 'MultiCrossEntropy'):
             return _2d_vector_of_double_to_np_array(raws).astype(int)
 
