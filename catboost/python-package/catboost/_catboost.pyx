@@ -89,6 +89,17 @@ ctypedef fused numpy_indices_dtype:
     np.uint64_t
 
 
+ctypedef fused categories_codes_dtype:
+    np.int8_t
+    np.int16_t
+    np.int32_t
+    np.int64_t
+    np.uint8_t
+    np.uint16_t
+    np.uint32_t
+    np.uint64_t
+
+
 ctypedef fused numpy_num_or_bool_dtype:
     # np.npy_bool   - can't add it - Cython confuses it with np.uint8_t
     np.int8_t
@@ -1233,106 +1244,137 @@ cdef bool_t _CallbackAfterIteration(
         with nogil:
             ThrowCppExceptionWithMessage(errorMessage)
 
-cdef _constarrayref_of_double_to_np_array(const TConstArrayRef[double] arr):
-    result = np.empty(arr.size(), dtype=_npfloat64)
+cdef np.ndarray _constarrayref_of_double_to_np_array(const TConstArrayRef[double] arr):
+    cdef np.ndarray[np.float64_t, ndim=1] result = np.empty(arr.size(), dtype=_npfloat64)
+    cdef np.float64_t[::1] result_view = result
     for i in xrange(arr.size()):
-        result[i] = arr[i]
+        result_view[i] = arr[i]
     return result
 
 
-cdef _vector_of_double_to_np_array(const TVector[double]& vec):
-    result = np.empty(vec.size(), dtype=_npfloat64)
-    for i in xrange(vec.size()):
-        result[i] = vec[i]
-    return result
+cdef np.ndarray _vector_of_double_to_np_array(const TVector[double]& vec):
+    return _constarrayref_of_double_to_np_array(<TConstArrayRef[double]>vec)
 
 
-cdef _2d_vector_of_double_to_np_array(const TVector[TVector[double]]& vectors):
+cdef np.ndarray _2d_vector_of_double_to_np_array(const TVector[TVector[double]]& vectors):
     cdef size_t subvec_size = vectors[0].size() if not vectors.empty() else 0
-    result = np.empty([vectors.size(), subvec_size], dtype=_npfloat64)
+
+    cdef np.ndarray[np.float64_t, ndim=2] result = np.empty([vectors.size(), subvec_size], dtype=_npfloat64)
+    cdef np.float64_t[:,::1] result_view = result
+
+    # result = np.empty([vectors.size(), subvec_size], dtype=_npfloat64)
     for i in xrange(vectors.size()):
         assert vectors[i].size() == subvec_size, "All subvectors should have the same length"
         for j in xrange(subvec_size):
-            result[i][j] = vectors[i][j]
+            result_view[i, j] = vectors[i][j]
     return result
 
 
-cdef _3d_vector_of_double_to_np_array(const TVector[TVector[TVector[double]]]& vectors):
+cdef np.ndarray _3d_vector_of_double_to_np_array(const TVector[TVector[TVector[double]]]& vectors):
     cdef size_t subvec_size = vectors[0].size() if not vectors.empty() else 0
     cdef size_t sub_subvec_size = vectors[0][0].size() if subvec_size != 0 else 0
-    result = np.empty([vectors.size(), subvec_size, sub_subvec_size], dtype=_npfloat64)
+
+    cdef np.ndarray[np.float64_t, ndim=3] result = np.empty(
+        [vectors.size(), subvec_size, sub_subvec_size],
+        dtype=_npfloat64
+    )
+    cdef np.float64_t[:,:,::1] result_view = result
+
     for i in xrange(vectors.size()):
         assert vectors[i].size() == subvec_size, "All subvectors should have the same length"
         for j in xrange(subvec_size):
             assert vectors[i][j].size() == sub_subvec_size, "All subvectors should have the same length"
             for k in xrange(sub_subvec_size):
-                result[i][j][k] = vectors[i][j][k]
+                result_view[i, j, k] = vectors[i][j][k]
     return result
 
-cdef _reorder_axes_for_python_3d_shap_values(TVector[TVector[TVector[TVector[double]]]]& vectors):
+cdef np.ndarray _reorder_axes_for_python_3d_shap_values(TVector[TVector[TVector[TVector[double]]]]& vectors):
     cdef size_t featuresCount = vectors.size() if not vectors.empty() else 0
     assert featuresCount == vectors[0].size()
     cdef size_t approx_dimension = vectors[0][0].size() if featuresCount != 0 else 0
     assert approx_dimension == 1
     cdef size_t doc_size = vectors[0][0][0].size() if approx_dimension != 0 else 0
-    result = np.empty([doc_size, featuresCount, featuresCount], dtype=_npfloat64)
+
+    cdef np.ndarray[np.float64_t, ndim=3] result = np.empty(
+        [doc_size, featuresCount, featuresCount],
+        dtype=_npfloat64
+    )
+    cdef np.float64_t[:,:,::1] result_view = result
+
     cdef size_t doc, feature1, feature2
     for doc in xrange(doc_size):
         for feature1 in xrange(featuresCount):
             for feature2 in xrange(featuresCount):
-                result[doc][feature1][feature2] = vectors[feature1][feature2][0][doc]
+                result_view[doc, feature1, feature2] = vectors[feature1][feature2][0][doc]
     return result
 
-cdef _reorder_axes_for_python_4d_shap_values(TVector[TVector[TVector[TVector[double]]]]& vectors):
+cdef np.ndarray _reorder_axes_for_python_4d_shap_values(TVector[TVector[TVector[TVector[double]]]]& vectors):
     cdef size_t featuresCount = vectors.size() if not vectors.empty() else 0
     assert featuresCount == vectors[0].size()
     cdef size_t approx_dimension = vectors[0][0].size() if featuresCount != 0 else 0
     assert approx_dimension > 1
     cdef size_t doc_size = vectors[0][0][0].size() if approx_dimension != 0 else 0
-    result = np.empty([doc_size, approx_dimension, featuresCount, featuresCount], dtype=_npfloat64)
+    #result = np.empty([doc_size, approx_dimension, featuresCount, featuresCount], dtype=_npfloat64)
+    cdef np.ndarray[np.float64_t, ndim=4] result = np.empty(
+        [doc_size, approx_dimension, featuresCount, featuresCount],
+        dtype=_npfloat64
+    )
+    cdef np.float64_t[:,:,:,::1] result_view = result
+
     cdef size_t doc, dim, feature1, feature2
     for doc in xrange(doc_size):
         for dim in xrange(approx_dimension):
             for feature1 in xrange(featuresCount):
                 for feature2 in xrange(featuresCount):
-                    result[doc][dim][feature1][feature2] = vectors[feature1][feature2][dim][doc]
+                    result_view[doc, dim, feature1, feature2] = vectors[feature1][feature2][dim][doc]
     return result
 
 
-cdef _vector_of_uints_to_np_array(const TVector[ui32]& vec):
-    result = np.empty(vec.size(), dtype=np.uint32)
+cdef np.ndarray _vector_of_uints_to_np_array(const TVector[ui32]& vec):
+    cdef np.ndarray[np.uint32_t, ndim=1] result = np.empty(vec.size(), dtype=np.uint32)
+    cdef np.uint32_t[::1] result_view = result
+
     for i in xrange(vec.size()):
-        result[i] = vec[i]
+        result_view[i] = vec[i]
     return result
 
 
-cdef _vector_of_ints_to_np_array(const TVector[int]& vec):
-    result = np.empty(vec.size(), dtype=int)
+cdef np.ndarray _vector_of_ints_to_np_array(const TVector[int]& vec):
+    cdef np.ndarray[np.int_t, ndim=1] result = np.empty(vec.size(), dtype=np.int_)
+    cdef np.int_t[::1] result_view = result
+
     for i in xrange(vec.size()):
-        result[i] = vec[i]
+        result_view[i] = vec[i]
     return result
 
 
-cdef _vector_of_uints_to_2d_np_array(const TVector[ui32]& vec, int row_count, int column_count):
+cdef np.ndarray _vector_of_uints_to_2d_np_array(const TVector[ui32]& vec, int row_count, int column_count):
     assert vec.size() == row_count * column_count
-    result = np.empty((row_count, column_count), dtype=np.uint32)
+
+    cdef np.ndarray[np.uint32_t, ndim=2] result = np.empty((row_count, column_count), dtype=np.uint32)
+    cdef np.uint32_t[:,::1] result_view = result
+
     for row_num in xrange(row_count):
         for col_num in xrange(column_count):
-            result[row_num][col_num] = vec[row_num * column_count + col_num]
+            result[row_num, col_num] = vec[row_num * column_count + col_num]
     return result
 
 
-cdef _vector_of_floats_to_np_array(const TVector[float]& vec):
-    result = np.empty(vec.size(), dtype=_npfloat32)
+cdef np.ndarray _vector_of_floats_to_np_array(const TVector[float]& vec):
+    cdef np.ndarray[np.float32_t, ndim=1] result = np.empty(vec.size(), dtype=_npfloat32)
+    cdef np.float32_t[::1] result_view = result
+
     for i in xrange(vec.size()):
-        result[i] = vec[i]
+        result_view[i] = vec[i]
     return result
 
 
-cdef _vector_of_size_t_to_np_array(const TVector[size_t]& vec):
-    result = np.empty(vec.size(), dtype=np.uint32)
+cdef np.ndarray _vector_of_size_t_to_np_array(const TVector[size_t]& vec):
+    cdef np.ndarray[np.uint32_t, ndim=1] result = np.empty(vec.size(), dtype=np.uint32)
+    cdef np.uint32_t[::1] result_view = result
+
     for i in xrange(vec.size()):
-        result[i] = vec[i]
+        result_view[i] = vec[i]
     return result
 
 
@@ -1820,7 +1862,7 @@ cdef class _PreprocessGrids:
         dumps_grid = dumps(prepared_grids, cls=_NumpyAwareEncoder)
         self.tree = ReadTJsonValue(to_arcadia_string(dumps_grid))
 
-cdef TString to_arcadia_string(s) except *:
+cdef inline TString to_arcadia_string(s) except *:
     cdef const unsigned char[:] bytes_s
     cdef const char* utf8_str_pointer
     cdef Py_ssize_t utf8_str_size
@@ -1847,7 +1889,7 @@ cdef TString to_arcadia_string(s) except *:
         bytes_s = s
     return TString(<const char*>&bytes_s[0], len(bytes_s))
 
-cdef to_native_str(binary):
+cdef inline to_native_str(binary):
     if PY_MAJOR_VERSION >= 3 and hasattr(binary, 'decode'):
         return binary.decode()
     return binary
@@ -2337,7 +2379,7 @@ cdef object _set_objects_order_embedding_features_data(
     return new_data_holders
 
 
-cdef float get_float_feature(ui32 non_default_doc_idx, ui32 flat_feature_idx, src_value) except*:
+cdef inline float get_float_feature(ui32 non_default_doc_idx, ui32 flat_feature_idx, src_value) except*:
     try:
         return _FloatOrNan(src_value)
     except TypeError as e:
@@ -2398,7 +2440,7 @@ cdef create_num_factor_data(
 
         return []
 
-cdef get_cat_factor_bytes_representation(
+cdef inline get_cat_factor_bytes_representation(
     int non_default_doc_idx, # can be -1 - that means default value for sparse data
     ui32 feature_idx,
     object factor,
@@ -2418,7 +2460,7 @@ cdef get_cat_factor_bytes_representation(
             ' should be converted to string.'.format(doc_description, feature_idx, factor)
         )
 
-cdef get_text_factor_bytes_representation(
+cdef inline get_text_factor_bytes_representation(
     int non_default_doc_idx, # can be -1 - that means default value for sparse data
     ui32 feature_idx,
     object factor,
@@ -2439,7 +2481,7 @@ cdef get_text_factor_bytes_representation(
         )
 
 
-cdef TVector[np.float32_t] get_embedding_array_as_vector(
+cdef inline TVector[np.float32_t] get_embedding_array_as_vector(
     ui32 object_idx,
     ui32 flat_feature_idx,
     size_t embedding_dimension,
@@ -2478,7 +2520,7 @@ cdef TVector[np.float32_t] get_embedding_array_as_vector(
 
 
 # returns new data holders array
-cdef get_embedding_array_data(
+cdef inline get_embedding_array_data(
     ui32 object_idx,
     ui32 flat_feature_idx,
     size_t embedding_dimension,
@@ -2688,6 +2730,30 @@ cdef object _set_features_order_data_pd_data_frame_sparse_column(
     return new_data_holders
 
 
+cdef _set_hashed_cat_values(
+    ui32 flat_feature_idx,
+    const categories_codes_dtype[:] categories_codes,
+    TConstArrayRef[ui32] categories_as_hashed_cat_values_ref,
+    TArrayRef[ui32] hashed_cat_values_ref
+):
+    cdef ui32 doc_count = categories_codes.shape[0]
+
+    cdef categories_codes_dtype category_code
+    cdef ui32 doc_idx
+
+
+    for doc_idx in xrange(doc_count):
+        category_code = categories_codes[doc_idx]
+        if category_code == -1:
+            raise CatBoostError(
+                'Invalid type for cat_feature[object_idx={},feature_idx={}]=NaN :'
+                ' cat_features must be integer or string, real number values and NaN values'
+                ' should be converted to string.'.format(doc_idx, flat_feature_idx)
+            )
+
+        hashed_cat_values_ref[doc_idx] = categories_as_hashed_cat_values_ref[category_code]
+
+
 cdef _set_features_order_data_pd_data_frame_categorical_column(
     ui32 flat_feature_idx,
     object column_values, # pd.Categorical, but Cython requires cimport to provide type here
@@ -2699,18 +2765,15 @@ cdef _set_features_order_data_pd_data_frame_categorical_column(
     IRawFeaturesOrderDataVisitor* builder_visitor
 ):
     cdef ui32 categories_size = len(column_values.categories)
-
-    cdef np.ndarray categories_codes = column_values.codes
-    cdef ui32 doc_count = categories_codes.shape[0]
+    cdef ui32 doc_count = len(column_values.codes)
 
     # access through TArrayRef is faster
     cdef TArrayRef[ui32] categories_as_hashed_cat_values_ref
+
     cdef TVector[ui32] hashed_cat_values
+    cdef TArrayRef[ui32] hashed_cat_values_ref
 
     cdef ui32 category_idx
-    cdef ui32 doc_idx
-    cdef i32 category_code
-
 
     # TODO(akhropov): make yresize accessible in Cython
     categories_as_hashed_cat_values[0].resize(categories_size)
@@ -2732,16 +2795,73 @@ cdef _set_features_order_data_pd_data_frame_categorical_column(
 
     # TODO(akhropov): make yresize accessible in Cython
     hashed_cat_values.resize(doc_count)
-    for doc_idx in xrange(doc_count):
-        category_code = categories_codes[doc_idx]
-        if category_code == -1:
-            raise CatBoostError(
-                'Invalid type for cat_feature[object_idx={},feature_idx={}]=NaN :'
-                ' cat_features must be integer or string, real number values and NaN values'
-                ' should be converted to string.'.format(doc_idx, flat_feature_idx)
-            )
+    hashed_cat_values_ref = <TArrayRef[ui32]>hashed_cat_values
 
-        hashed_cat_values[doc_idx] = categories_as_hashed_cat_values_ref[category_code]
+    categories_codes_dtype = column_values.codes.dtype
+
+    if categories_codes_dtype == np.int8:
+        _set_hashed_cat_values[np.int8_t](
+            flat_feature_idx,
+            column_values.codes,
+            <TConstArrayRef[ui32]>categories_as_hashed_cat_values_ref,
+            hashed_cat_values_ref
+        )
+    elif categories_codes_dtype == np.int16:
+        _set_hashed_cat_values[np.int16_t](
+            flat_feature_idx,
+            column_values.codes,
+            <TConstArrayRef[ui32]>categories_as_hashed_cat_values_ref,
+            hashed_cat_values_ref
+        )
+    elif categories_codes_dtype == np.int32:
+        _set_hashed_cat_values[np.int32_t](
+            flat_feature_idx,
+            column_values.codes,
+            <TConstArrayRef[ui32]>categories_as_hashed_cat_values_ref,
+            hashed_cat_values_ref
+        )
+    elif categories_codes_dtype == np.int64:
+        _set_hashed_cat_values[np.int64_t](
+            flat_feature_idx,
+            column_values.codes,
+            <TConstArrayRef[ui32]>categories_as_hashed_cat_values_ref,
+            hashed_cat_values_ref
+        )
+    elif categories_codes_dtype == np.uint8:
+        _set_hashed_cat_values[np.uint8_t](
+            flat_feature_idx,
+            column_values.codes,
+            <TConstArrayRef[ui32]>categories_as_hashed_cat_values_ref,
+            hashed_cat_values_ref
+        )
+    elif categories_codes_dtype == np.uint16:
+        _set_hashed_cat_values[np.uint16_t](
+            flat_feature_idx,
+            column_values.codes,
+            <TConstArrayRef[ui32]>categories_as_hashed_cat_values_ref,
+            hashed_cat_values_ref
+        )
+    elif categories_codes_dtype == np.uint32:
+        _set_hashed_cat_values[np.uint32_t](
+            flat_feature_idx,
+            column_values.codes,
+            <TConstArrayRef[ui32]>categories_as_hashed_cat_values_ref,
+            hashed_cat_values_ref
+        )
+    elif categories_codes_dtype == np.uint64:
+        _set_hashed_cat_values[np.uint64_t](
+            flat_feature_idx,
+            column_values.codes,
+            <TConstArrayRef[ui32]>categories_as_hashed_cat_values_ref,
+            hashed_cat_values_ref
+        )
+    else:
+        raise TypeError(
+            "Unexpected dtype of pandas.Categorical.codes for feature_idx={}: {} ".format(
+                flat_feature_idx,
+                categories_codes_dtype
+            )
+        )
 
     builder_visitor[0].AddCatFeature(
         flat_feature_idx,
@@ -2945,7 +3065,7 @@ cdef _get_categorical_feature_value_from_scipy_sparse(
     else:
         factor_string_buf[0] = ToString[i64](<i64>value)
 
-cdef _add_single_feature_value_from_scipy_sparse(
+cdef inline _add_single_feature_value_from_scipy_sparse(
     int doc_idx,
     ui32 feature_idx,
     value,
@@ -3528,7 +3648,7 @@ cdef _set_data(data, embedding_features_data, feature_names, const TFeaturesLayo
     return new_data_holders
 
 
-cdef TString obj_to_arcadia_string(obj) except *:
+cdef inline TString obj_to_arcadia_string(obj) except *:
     INT64_MIN = -9223372036854775808
     INT64_MAX =  9223372036854775807
     cdef type obj_type = type(obj)
@@ -3587,7 +3707,7 @@ cdef _set_weight_features_order(weight, IRawFeaturesOrderDataVisitor* builder_vi
         weightVector.push_back(float(weight[i]))
     builder_visitor[0].AddWeights(<TConstArrayRef[float]>weightVector)
 
-cdef TGroupId _calc_group_id_for(i, py_group_ids) except *:
+cdef inline TGroupId _calc_group_id_for(i, py_group_ids) except *:
     cdef TString id_as_strbuf
 
     try:
@@ -3621,7 +3741,7 @@ cdef _set_group_weight_features_order(group_weight, IRawFeaturesOrderDataVisitor
         groupWeightVector.push_back(float(group_weight[i]))
     builder_visitor[0].AddGroupWeights(<TConstArrayRef[float]>groupWeightVector)
 
-cdef TSubgroupId _calc_subgroup_id_for(i, py_subgroup_ids) except *:
+cdef inline TSubgroupId _calc_subgroup_id_for(i, py_subgroup_ids) except *:
     cdef TString id_as_strbuf
 
     try:
@@ -4867,20 +4987,20 @@ cdef class _CatBoost:
         return transform_predictions(pred, predictionType, thread_count, self.__model)
 
     cpdef _base_virtual_ensembles_predict(self, _PoolBase pool, str prediction_type, int ntree_end, int virtual_ensembles_count, int thread_count, bool_t verbose):
-            cdef TVector[TVector[double]] pred
-            cdef EPredictionType predictionType = string_to_prediction_type(prediction_type)
-            thread_count = UpdateThreadCount(thread_count);
-            with nogil:
-                pred = ApplyUncertaintyPredictions(
-                    dereference(self.__model),
-                    dereference(pool.__pool.Get()),
-                    verbose,
-                    predictionType,
-                    ntree_end,
-                    virtual_ensembles_count,
-                    thread_count
-                )
-            return np.transpose(_2d_vector_of_double_to_np_array(pred))
+        cdef TVector[TVector[double]] pred
+        cdef EPredictionType predictionType = string_to_prediction_type(prediction_type)
+        thread_count = UpdateThreadCount(thread_count);
+        with nogil:
+            pred = ApplyUncertaintyPredictions(
+                dereference(self.__model),
+                dereference(pool.__pool.Get()),
+                verbose,
+                predictionType,
+                ntree_end,
+                virtual_ensembles_count,
+                thread_count
+            )
+        return np.transpose(_2d_vector_of_double_to_np_array(pred))
 
     cpdef _staged_predict_iterator(self, _PoolBase pool, str prediction_type, int ntree_start, int ntree_end, int eval_period, int thread_count, verbose):
         thread_count = UpdateThreadCount(thread_count);
@@ -5418,10 +5538,10 @@ cdef class _CatBoost:
         self.__model.ModelTrees.GetMutable().GetModelTreeData().Get().SetLeafValues(model_leafs)
 
     cpdef _set_feature_names(self, feature_names):
-            cdef TVector[TString] feature_names_vector
-            for value in feature_names:
-                feature_names_vector.push_back(to_arcadia_string(str(value)))
-            SetModelExternalFeatureNames(feature_names_vector, self.__model)
+        cdef TVector[TString] feature_names_vector
+        for value in feature_names:
+            feature_names_vector.push_back(to_arcadia_string(str(value)))
+        SetModelExternalFeatureNames(feature_names_vector, self.__model)
 
     cpdef _convert_oblivious_to_asymmetric(self):
         self.__model.ModelTrees.GetMutable().ConvertObliviousToAsymmetric()
@@ -6165,8 +6285,8 @@ cpdef convert_features_to_indices(indices_or_names, cd_path, pool_metainfo_path)
     return loads(to_native_str(WriteTJsonValue(indices_or_names_as_json)))
 
 
-cdef TArrayRef[float] get_array_ref(np.ndarray[np.float32_t, ndim=1] src) noexcept:
-    return TArrayRef[float](<float*>src.data, <size_t>src.shape[0])
+cdef inline TArrayRef[float] get_array_ref(np.float32_t[::1] src) noexcept:
+    return TArrayRef[float](&src[0], <size_t>src.shape[0])
 
 
 cpdef get_num_feature_values_sample(
