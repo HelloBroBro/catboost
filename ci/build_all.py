@@ -406,6 +406,12 @@ def build_all_for_one_platform(
                 'have_cuda' if have_cuda else 'no_cuda',
                 platform_name
             )
+        if have_cuda:
+            msvs_version = '2019'
+            msvc_toolset = '14.28.29333'
+        else:
+            msvs_version = '2022'
+            msvc_toolset = '14.39.33519'
 
         build_native.build(
             dry_run=dry_run,
@@ -417,6 +423,8 @@ def build_all_for_one_platform(
             have_cuda=have_cuda,
             cuda_root_dir=CUDA_ROOT if have_cuda else None,
             target_platform=target_platform,
+            msvs_version=msvs_version,
+            msvc_toolset=msvc_toolset,
             macos_universal_binaries=macos_universal_binaries,
             native_built_tools_root_dir=native_built_tools_root_dir,
             cmake_extra_args=default_cmake_extra_args + cmake_extra_args,
@@ -562,10 +570,16 @@ def build_all(src_root_dir: str, dry_run:bool = False, verbose:bool = False):
 
     platform_name = get_primary_platform_name()
 
+    if platform_name.startswith('linux'):
+        cmake_target_toolchain=os.path.join(src_root_dir, 'ci', 'toolchains', 'clangs.toolchain')
+    else:
+        cmake_target_toolchain=None
+
     build_all_for_one_platform(
         src_root_dir=src_root_dir,
         built_output_root_dir=build_native_root_dir,
         platform_name=platform_name,
+        cmake_target_toolchain=cmake_target_toolchain,
         dry_run=dry_run,
         verbose=verbose
     )
@@ -578,7 +592,7 @@ def build_all(src_root_dir: str, dry_run:bool = False, verbose:bool = False):
             src_root_dir=src_root_dir,
             built_output_root_dir=build_native_root_dir,
             platform_name='linux-aarch64',
-            cmake_target_toolchain=os.path.join(src_root_dir, 'ci', 'toolchains', 'dockcross.manylinux2014_aarch64.clang.toolchain'),
+            cmake_target_toolchain=os.path.join(src_root_dir, 'ci', 'toolchains', 'dockcross.manylinux2014_aarch64.clangs.toolchain'),
             conan_host_profile=os.path.join(src_root_dir, 'ci', 'conan-profiles', 'dockcross.manylinux2014_aarch64.profile'),
             dry_run=dry_run,
             verbose=verbose,
