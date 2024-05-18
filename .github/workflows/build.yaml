@@ -22,9 +22,6 @@ jobs:
       CATBOOST_PACKAGE_NAME: ${{ inputs.catboost_package_name }}
       CATBOOST_PACKAGE_VERSION: ${{ inputs.catboost_package_version }}
       CMAKE_BUILD_CACHE_DIR: cmake_build_cache
-    defaults:
-      run:
-        shell: bash
     steps:
       - if: inputs.runs-on_value == 'ubuntu-latest'
         name: Maximize build space
@@ -115,7 +112,7 @@ jobs:
           cd Python
           unzip ${{ github.workspace }}/python_versions_macos_arm64
 
-      - if: matrix.os == 'windows-2019'
+      - if: inputs.runs-on_value == 'windows-2019'
         name: Install CUDA on Windows
         uses: Jimver/cuda-toolkit@v0.2.15
         id: cuda-toolkit
