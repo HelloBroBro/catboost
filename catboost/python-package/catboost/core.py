@@ -1252,7 +1252,7 @@ class Pool(_PoolBase):
             input file with borders used in numeric features binarization.
 
         task_type : string, [default=None]
-            The calcer type used to train the model.
+            The calcer type that will be used to train the model after quantization.
             Possible values:
                 - 'CPU'
                 - 'GPU'
@@ -2643,6 +2643,12 @@ class CatBoost(_CatBoostBase):
 
         verbose : bool, optional (default=False)
             If True, writes the evaluation metric measured set to stderr.
+
+        task_type : string, [default=None]
+            The evaluator type.
+            Possible values:
+                - 'CPU'
+                - 'GPU' (models with only numerical features are supported for now)
 
         Returns
         -------
@@ -5256,6 +5262,12 @@ class CatBoostClassifier(CatBoost):
         verbose : bool, optional (default=False)
             If True, writes the evaluation metric measured set to stderr.
 
+        task_type : string, [default=None]
+            The evaluator type.
+            Possible values:
+                - 'CPU'
+                - 'GPU' (models with only numerical features are supported for now)
+
         Returns
         -------
         prediction:
@@ -5302,6 +5314,12 @@ class CatBoostClassifier(CatBoost):
         verbose : bool
             If True, writes the evaluation metric measured set to stderr.
 
+        task_type : string, [default=None]
+            The evaluator type.
+            Possible values:
+                - 'CPU'
+                - 'GPU' (models with only numerical features are supported for now)
+
         Returns
         -------
         prediction :
@@ -5339,6 +5357,12 @@ class CatBoostClassifier(CatBoost):
 
         verbose : bool
             If True, writes the evaluation metric measured set to stderr.
+
+        task_type : string, [default=None]
+            The evaluator type.
+            Possible values:
+                - 'CPU'
+                - 'GPU' (models with only numerical features are supported for now)
 
         Returns
         -------
@@ -5861,6 +5885,12 @@ class CatBoostRegressor(CatBoost):
         verbose : bool
             If True, writes the evaluation metric measured set to stderr.
 
+        task_type : string, [default=None]
+            The evaluator type.
+            Possible values:
+                - 'CPU'
+                - 'GPU' (models with only numerical features are supported for now)
+
         Returns
         -------
         prediction :
@@ -5986,6 +6016,7 @@ class CatBoostRanker(CatBoost):
         'StochasticRank'
         'QueryCrossEntropy'
         'QueryRMSE'
+        'GroupQuantile'
         'QuerySoftMax'
         'PairLogit'
         'PairLogitPairwise'
@@ -6347,7 +6378,7 @@ class CatBoostRanker(CatBoost):
         if not (is_ranking or is_regression):
             raise CatBoostError("Invalid loss_function='{}': for ranker use "
                                 "YetiRank, YetiRankPairwise, StochasticFilter, StochasticRank, "
-                                "QueryCrossEntropy, QueryRMSE, QuerySoftMax, PairLogit, PairLogitPairwise. "
+                                "QueryCrossEntropy, QueryRMSE, GroupQuantile, QuerySoftMax, PairLogit, PairLogitPairwise. "
                                 "It's also possible to use a regression loss".format(loss_function))
 
 
