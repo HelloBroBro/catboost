@@ -255,7 +255,7 @@ cdef extern from "<future>" namespace "std":
 
 
 cdef extern from "catboost/libs/logging/logging.h":
-    ctypedef void(*TCustomLoggingFunctionPtr)(const char *, size_t len, void *) except * with gil
+    ctypedef void(*TCustomLoggingFunctionPtr)(const char *, size_t len, void *) with gil
     cdef void SetCustomLoggingFunction(TCustomLoggingFunctionPtr, TCustomLoggingFunctionPtr, void*, void*) except +ProcessException
     cdef void RestoreOriginalLogger() except +ProcessException
     cdef void ResetTraceBackend(const TString&) except +ProcessException
@@ -659,10 +659,10 @@ cdef extern from "catboost/libs/metrics/metric.h":
         TMaybe[TGpuEvalFuncPtr] GpuEvalFunc
         TMaybe[TEvalMultiTargetFuncPtr] EvalMultiTargetFunc
 
-        TString (*GetDescriptionFunc)(void *customData) except * with gil
-        bool_t (*IsMaxOptimalFunc)(void *customData) except * with gil
-        bool_t (*IsAdditiveFunc)(void *customData) except * with gil
-        double (*GetFinalErrorFunc)(const TMetricHolder& error, void *customData) except * with gil
+        TString (*GetDescriptionFunc)(void *customData) with gil
+        bool_t (*IsMaxOptimalFunc)(void *customData) with gil
+        bool_t (*IsAdditiveFunc)(void *customData) with gil
+        double (*GetFinalErrorFunc)(const TMetricHolder& error, void *customData) with gil
     cdef bool_t IsMaxOptimal(const TString& metricName) nogil except +ProcessException
     cdef bool_t IsMinOptimal(const TString& metricName) nogil except +ProcessException
 
@@ -775,7 +775,7 @@ cdef extern from "catboost/libs/train_lib/train_model.h":
         bool_t (*AfterIterationFunc)(
             const TMetricsAndTimeLeftHistory& history,
             void *customData
-        ) except * with gil
+        ) with gil
 
 cdef extern from "catboost/libs/data/quantization.h"  namespace "NCB":
     cdef TQuantizedObjectsDataProviderPtr ConstructQuantizedPoolFromRawPool(
@@ -1229,14 +1229,14 @@ cpdef _float_or_nan(obj):
     return _FloatOrNan(obj)
 
 
-cdef TString _MetricGetDescription(void* customData) except * with gil:
+cdef TString _MetricGetDescription(void* customData) with gil:
     cdef metricObject = <object>customData
     name = metricObject.__class__.__name__
     if PY_MAJOR_VERSION >= 3:
         name = name.encode()
     return TString(<const char*>name)
 
-cdef bool_t _MetricIsMaxOptimal(void* customData) except * with gil:
+cdef bool_t _MetricIsMaxOptimal(void* customData) with gil:
     cdef metricObject = <object>customData
     try:
         return metricObject.is_max_optimal()
@@ -1245,11 +1245,11 @@ cdef bool_t _MetricIsMaxOptimal(void* customData) except * with gil:
         with nogil:
             ThrowCppExceptionWithMessage(errorMessage)
 
-cdef bool_t _MetricIsAdditive(void* customData) except * with gil:
+cdef bool_t _MetricIsAdditive(void* customData) with gil:
     cdef metricObject = <object>customData
     return hasattr(metricObject, 'is_additive') and metricObject.is_additive()
 
-cdef double _MetricGetFinalError(const TMetricHolder& error, void *customData) except * with gil:
+cdef double _MetricGetFinalError(const TMetricHolder& error, void *customData) with gil:
     # TODO(nikitxskv): use error.Stats for custom metrics.
     cdef metricObject = <object>customData
     try:
@@ -1262,7 +1262,7 @@ cdef double _MetricGetFinalError(const TMetricHolder& error, void *customData) e
 cdef bool_t _CallbackAfterIteration(
         const TMetricsAndTimeLeftHistory& history,
         void* customData
-    ) except * with gil:
+    ) with gil:
     cdef callbackObject = <object>customData
     if PY_MAJOR_VERSION >= 3:
         info = types.SimpleNamespace()
@@ -1281,6 +1281,7 @@ cdef bool_t _CallbackAfterIteration(
 cdef np.ndarray _constarrayref_of_double_to_np_array(const TConstArrayRef[double] arr):
     cdef np.ndarray[np.float64_t, ndim=1] result = np.empty(arr.size(), dtype=_npfloat64)
     cdef np.float64_t[::1] result_view = result
+    cdef size_t i
     for i in xrange(arr.size()):
         result_view[i] = arr[i]
     return result
@@ -1296,6 +1297,7 @@ cdef np.ndarray _2d_vector_of_double_to_np_array(const TVector[TVector[double]]&
     cdef np.ndarray[np.float64_t, ndim=2] result = np.empty([vectors.size(), subvec_size], dtype=_npfloat64)
     cdef np.float64_t[:,::1] result_view = result
 
+    cdef size_t i, j
     for i in xrange(vectors.size()):
         assert vectors[i].size() == subvec_size, "All subvectors should have the same length"
         for j in xrange(subvec_size):
@@ -1313,6 +1315,7 @@ cdef np.ndarray _3d_vector_of_double_to_np_array(const TVector[TVector[TVector[d
     )
     cdef np.float64_t[:,:,::1] result_view = result
 
+    cdef size_t i, j, k
     for i in xrange(vectors.size()):
         assert vectors[i].size() == subvec_size, "All subvectors should have the same length"
         for j in xrange(subvec_size):
@@ -1366,6 +1369,7 @@ cdef np.ndarray _vector_of_uints_to_np_array(const TVector[ui32]& vec):
     cdef np.ndarray[np.uint32_t, ndim=1] result = np.empty(vec.size(), dtype=np.uint32)
     cdef np.uint32_t[::1] result_view = result
 
+    cdef size_t i
     for i in xrange(vec.size()):
         result_view[i] = vec[i]
     return result
@@ -1375,6 +1379,7 @@ cdef np.ndarray _vector_of_ints_to_np_array(const TVector[int]& vec):
     cdef np.ndarray[np.int_t, ndim=1] result = np.empty(vec.size(), dtype=np.int_)
     cdef np.int_t[::1] result_view = result
 
+    cdef size_t i
     for i in xrange(vec.size()):
         result_view[i] = vec[i]
     return result
@@ -1386,6 +1391,7 @@ cdef np.ndarray _vector_of_uints_to_2d_np_array(const TVector[ui32]& vec, int ro
     cdef np.ndarray[np.uint32_t, ndim=2] result = np.empty((row_count, column_count), dtype=np.uint32)
     cdef np.uint32_t[:,::1] result_view = result
 
+    cdef int row_num, col_num
     for row_num in xrange(row_count):
         for col_num in xrange(column_count):
             result[row_num, col_num] = vec[row_num * column_count + col_num]
@@ -1396,6 +1402,7 @@ cdef np.ndarray _vector_of_floats_to_np_array(const TVector[float]& vec):
     cdef np.ndarray[np.float32_t, ndim=1] result = np.empty(vec.size(), dtype=_npfloat32)
     cdef np.float32_t[::1] result_view = result
 
+    cdef size_t i
     for i in xrange(vec.size()):
         result_view[i] = vec[i]
     return result
@@ -1405,6 +1412,7 @@ cdef np.ndarray _vector_of_size_t_to_np_array(const TVector[size_t]& vec):
     cdef np.ndarray[np.uint32_t, ndim=1] result = np.empty(vec.size(), dtype=np.uint32)
     cdef np.uint32_t[::1] result_view = result
 
+    cdef size_t i
     for i in xrange(vec.size()):
         result_view[i] = vec[i]
     return result
@@ -2055,6 +2063,9 @@ cdef _npfloat64 = np.float64
 cpdef _prepare_cv_result(metric_name, const TVector[ui32]& iterations,
         const TVector[double]& average_train, const TVector[double]& std_dev_train,
         const TVector[double]& average_test, const TVector[double]& std_dev_test, result):
+
+    cdef size_t it
+
     # sklearn-style preparation
     fill_iterations_column = 'iterations' not in result
     if fill_iterations_column:
@@ -2247,8 +2258,9 @@ class FeaturesData(object):
         return self.num_feature_names + self.cat_feature_names
 
 
-cdef void list_to_vector(values_list, TVector[ui32]* values_vector) except *:
+cdef list_to_vector(values_list, TVector[ui32]* values_vector):
     if values_list is not None:
+        values_vector[0].reserve(len(values_list))
         for value in values_list:
             values_vector[0].push_back(value)
 
@@ -3255,8 +3267,9 @@ cdef _set_data_from_scipy_bsr_sparse(
     cdef int feature_block_idx
     cdef int feature_in_block_idx
     cdef int feature_block_start_idx
-    cdef int indptr_begin
-    cdef int indptr_end
+    cdef size_t indptr
+    cdef size_t indptr_begin
+    cdef size_t indptr_end
     cdef bool_t is_float_value = (data.dtype == np.float32) or (data.dtype == np.float64)
 
     for doc_block_idx in xrange(doc_block_count):
@@ -3596,7 +3609,7 @@ def _set_features_order_data_scipy_sparse_csc_matrix(
     cdef ui32 src_feature_idx
     cdef ui32 dst_feature_idx
     cdef ui32 feature_nonzero_count
-    cdef ui32 data_idx
+    cdef numpy_indices_dtype data_idx
 
     cdef TMaybeOwningConstArrayHolder[ui32] feature_indices_holder
 
@@ -3607,8 +3620,8 @@ def _set_features_order_data_scipy_sparse_csc_matrix(
 
     cdef bool_t is_float_value = False
 
-    cdef int indptr_begin
-    cdef int indptr_end
+    cdef numpy_indices_dtype indptr_begin
+    cdef numpy_indices_dtype indptr_end
 
     if (numpy_num_or_bool_dtype is np.float32_t) or (numpy_num_or_bool_dtype is np.float64_t):
         is_float_value = True
@@ -3903,13 +3916,13 @@ cdef inline TSubgroupId _calc_subgroup_id_for(i, py_subgroup_ids) except *:
 
 cdef _set_subgroup_id(subgroup_id, IBuilderVisitor* builder_visitor):
     cdef ui32 subgroup_id_len = len(subgroup_id)
-    cdef int i
+    cdef ui32 i
     for i in xrange(subgroup_id_len):
         builder_visitor[0].AddSubgroupId(i, _calc_subgroup_id_for(i, subgroup_id))
 
 cdef _set_baseline(baseline, IRawObjectsOrderDataVisitor* builder_visitor):
     cdef ui32 baseline_len = len(baseline)
-    cdef int i
+    cdef ui32 i
     for i in xrange(baseline_len):
         for j, value in enumerate(baseline[i]):
             builder_visitor[0].AddBaseline(i, j, float(value))
@@ -6298,6 +6311,7 @@ cpdef _select_threshold(model, data, curve, FPR, FNR, thread_count):
     cdef TRocCurve rocCurve
     cdef TVector[TRocPoint] points
     cdef TVector[TDataProviderPtr] pools
+    cdef Py_ssize_t size, i
 
     if data is not None:
         for pool in data:
@@ -6316,7 +6330,7 @@ cpdef _select_threshold(model, data, curve, FPR, FNR, thread_count):
     return rocCurve.SelectDecisionBoundaryByIntersection()
 
 
-cdef void _WriteLog(const char* str, size_t len, void* targetObject) except * with gil:
+cdef void _WriteLog(const char* str, size_t len, void* targetObject) with gil:
     cdef streamLikeObject = <object> targetObject
     cdef bytes bytes_str = str[:len]
     streamLikeObject.write(to_native_str(bytes_str))
