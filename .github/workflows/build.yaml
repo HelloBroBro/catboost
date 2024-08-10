@@ -31,12 +31,13 @@ jobs:
         name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
-          root-reserve-mb: 36000  # needed for docker image
+          root-reserve-mb: 40000  # needed for docker image
           swap-size-mb: 1024
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
+          remove-docker-images: 'true'
 
       - if: inputs.runs-on_value == 'macos-13'
         name: Get python_3.7_macos_x86_64 from cache
@@ -307,21 +308,21 @@ jobs:
           path: catboost/build_native_root/have_cuda/linux-aarch64/catboost/libs/model_interface/libcatboostmodel.*
           retention-days: ${{ inputs.artifact_retention_days }}
 
-      - if: inputs.runs-on_value == 'ubuntu-latest'
-        name: 'Upload artifact: catboost4j-spark-impl-sources'
+      - name: 'Upload artifact: catboost4j-spark-impl-sources'
         uses: actions/upload-artifact@v4
         with:
           name: catboost4j-spark-impl-sources-${{ inputs.artifacts_version }}
           path: catboost/catboost/spark/catboost4j-spark/core/target/catboost4j-spark-impl-sources.jar
           retention-days: ${{ inputs.artifact_retention_days }}
+          overwrite: true
 
-      - if: inputs.runs-on_value == 'ubuntu-latest'
-        name: 'Upload artifact: catboost4j-spark_core_resources_classes'
+      - name: 'Upload artifact: catboost4j-spark_core_resources_classes'
         uses: actions/upload-artifact@v4
         with:
           name: catboost4j-spark_core_resources_classes-${{ inputs.artifacts_version }}
           path: catboost/catboost/spark/catboost4j-spark/core/src/main/resources/ru*
           retention-days: ${{ inputs.artifact_retention_days }}
+          overwrite: true
 
       - if: inputs.runs-on_value == 'ubuntu-latest'
         name: 'Upload artifact: catboost4j-spark_core_resources-linux'
