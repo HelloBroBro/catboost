@@ -1,3 +1,5 @@
+name: Check build and tests per OS
+
 on:
   workflow_call:
     inputs:
@@ -13,8 +15,9 @@ on:
         type: string
         default: catboost_dev
       catboost_package_version:
-        required: true
+        required: false
         type: string
+        default: ''   # version from repository will be used
       artifacts_version:
         required: false
         type: string
@@ -34,7 +37,7 @@ jobs:
       catboost_package_name: ${{ inputs.catboost_package_name }}
       catboost_package_version: ${{ inputs.catboost_package_version }}
       artifacts_version: ${{ inputs.artifacts_version }}
-      artifact_retention_days: ${{ inputs.artifact_retention_days }}
+      artifact_retention_days: ${{ fromJSON(inputs.artifact_retention_days) }}
 
   test:
     name: Test
@@ -45,4 +48,3 @@ jobs:
       runs-on_value: ${{ inputs.runs-on_value }}
       artifacts_version: ${{ inputs.artifacts_version }}
       catboost_package_name: ${{ inputs.catboost_package_name }}
-      catboost_package_version: ${{ inputs.catboost_package_version }}
